@@ -1,0 +1,223 @@
+================================================================================
+Exercise 1: Build a Blog API
+================================================================================
+
+OBJECTIVE:
+  Create a REST API for a blogging platform.
+
+--------------------------------------------------------------------------------
+MAIN PROMPT:
+--------------------------------------------------------------------------------
+Create a Flask REST API for a blogging platform. Include user authentication
+with JWT, blog post CRUD operations, comment system, category management, and
+search functionality. Use SQLAlchemy, Marshmallow, and Swagger UI. Include
+proper error handling and validation.
+
+Build a comprehensive API for a blogging platform following these detailed
+requirements:
+
+  ARCHITECTURE & STACK:
+    - Framework: Flask with the Application Factory pattern (create_app)
+    - Database ORM: SQLAlchemy with Flask-SQLAlchemy; use SQLite for development
+      and PostgreSQL-compatible models for production
+    - Serialization & Validation: Marshmallow (Flask-Marshmallow) schemas for
+      request deserialization, input validation, and response serialization
+    - Authentication: JWT-based auth via Flask-JWT-Extended; issue access tokens
+      on login and protect routes with @jwt_required() decorators
+    - API Documentation: Swagger UI exposed at /api/docs using Flask-RESTX or
+      Flasgger; every endpoint must have docstrings / YAML annotations
+
+  DATA MODELS:
+    - User: id, username (unique), email (unique), password_hash, created_at
+    - Post: id, title, body, author_id (FK → User), category_id (FK → Category),
+      created_at, updated_at; full-text search on title and body
+    - Comment: id, body, author_id (FK → User), post_id (FK → Post), created_at
+    - Category: id, name (unique), slug
+
+  AUTHENTICATION FLOW:
+    - POST /api/auth/register — validate unique username/email, hash password
+      with bcrypt, return 201 + user object
+    - POST /api/auth/login — verify credentials, return signed JWT access token
+    - All write operations (create/update/delete post, create/delete comment)
+      must require a valid JWT; read operations are public
+
+  BLOG POST CRUD:
+    - Create: validate required fields (title, body, category_id); set author
+      from JWT identity; return 201
+    - Read (list): paginate at 20 posts per page; accept ?page= query param;
+      return total count, current page, and results array
+    - Read (single): return post with author info and comment count
+    - Update: only the post's author may update; partial updates allowed (PATCH
+      semantics); return updated post
+    - Delete: only the post's author may delete; return 204
+
+  COMMENT SYSTEM:
+    - POST /api/posts/<id>/comments — authenticated users add a comment; return 201
+    - GET  /api/posts/<id>/comments — paginated list of comments (10 per page)
+    - DELETE /api/comments/<id>     — only comment author may delete; return 204
+
+  SEARCH FUNCTIONALITY:
+    - GET /api/search?q=<keyword>[&page=<n>] — case-insensitive search across
+      post title and body using SQLAlchemy LIKE/ilike; return paginated results
+      in the same format as the post list endpoint
+
+  ERROR HANDLING & VALIDATION:
+    - Return structured JSON errors: { "error": "<message>", "details": {...} }
+    - 400 for validation failures (include field-level Marshmallow errors)
+    - 401 for missing/invalid JWT
+    - 403 for authorization failures (wrong owner)
+    - 404 for missing resources
+    - 409 for duplicate username/email on registration
+    - 500 with generic message for unexpected server errors; log full traceback
+
+  API DOCUMENTATION (SWAGGER UI):
+    - Every endpoint documented with summary, request body schema, and all
+      possible response codes
+    - Swagger UI accessible at /api/docs in development mode
+    - Authentication endpoints show example request/response payloads
+
+--------------------------------------------------------------------------------
+REQUIRED FEATURES:
+--------------------------------------------------------------------------------
+  - User authentication (register, login)
+  - Post CRUD operations
+  - Comment system (create, read, delete)
+  - Category management
+  - Search posts by keyword
+  - Pagination (20 posts per page)
+  - Swagger documentation
+
+--------------------------------------------------------------------------------
+API ENDPOINTS:
+--------------------------------------------------------------------------------
+  POST    /api/auth/register
+  POST    /api/auth/login
+  GET     /api/posts              # List posts (paginated)
+  POST    /api/posts              # Create post
+  GET     /api/posts/<id>         # Get single post
+  PUT     /api/posts/<id>         # Update post
+  DELETE  /api/posts/<id>         # Delete post
+  POST    /api/posts/<id>/comments
+  GET     /api/posts/<id>/comments
+  GET     /api/categories
+  GET     /api/search?q=keyword
+
+================================================================================
+Exercise 2: Add Caching and Testing
+================================================================================
+
+OBJECTIVE:
+  Enhance the Blog API with Redis caching and comprehensive tests.
+
+--------------------------------------------------------------------------------
+MAIN PROMPT:
+--------------------------------------------------------------------------------
+Enhance the existing Flask Blog API by integrating Redis caching and writing a
+comprehensive test suite. The goal is to reduce response time by 50% and handle
+more concurrent requests by caching frequently accessed data, invalidating stale
+entries on writes, and optimizing the database with strategic indexes.
+
+Implement the following improvements end-to-end:
+
+  REDIS CACHING SETUP:
+    - Add Flask-Caching (backend: Redis) to the application factory; read Redis
+      connection settings from environment variables (REDIS_URL, CACHE_TTL)
+    - Provide a sensible default TTL (e.g. 300 seconds) configurable per route
+    - Graceful degradation: if Redis is unavailable the API must still serve
+      requests (fall back to no-cache, log a warning)
+
+  CACHE POST LISTINGS:
+    - Cache the paginated post-list response (GET /api/posts?page=<n>) using a
+      key that encodes the page number; TTL = CACHE_TTL
+    - Cache individual post responses (GET /api/posts/<id>) using the post id
+      as the cache key; TTL = CACHE_TTL
+
+  CACHE INVALIDATION:
+    - On any write that modifies post data (POST, PUT/PATCH, DELETE /api/posts/*)
+      invalidate the affected individual-post cache entry
+    - Invalidate (or flush) the post-list cache on post creation or deletion so
+      stale paginated results are never served
+    - On comment creation/deletion invalidate the parent post's cache entry
+
+  DATABASE INDEXES:
+    - Add SQLAlchemy Index definitions (or __table_args__) for:
+        · Post.created_at      (for default time-sorted listings)
+        · Post.author_id       (for per-author queries)
+        · Post.category_id     (for category filter queries)
+        · Post.title + Post.body (for full-text / LIKE search)
+    - Generate and apply the indexes via a new Alembic migration or by updating
+      the existing table definitions with explicit index=True / Index(...)
+
+  TESTING — 15+ PYTEST TEST CASES:
+    Write tests in a tests/ directory using pytest + pytest-flask. Each test
+    function must follow the Arrange-Act-Assert pattern and be fully isolated
+    (use a fresh in-memory SQLite DB per test session).
+
+    Required test groups and minimum counts:
+
+    Auth tests (>=3):
+      1. test_register_success          — 201, user object returned
+      2. test_register_duplicate_email  — 409 on duplicate email
+      3. test_login_success             — 200, JWT token present in response
+      4. test_login_invalid_password    — 401 on wrong password
+
+    Post CRUD tests (>=5):
+      5. test_create_post_authenticated  — 201, post persisted
+      6. test_create_post_unauthenticated — 401 without JWT
+      7. test_get_post_list_paginated    — 200, pagination meta correct
+      8. test_get_single_post            — 200, correct fields returned
+      9. test_update_post_by_owner       — 200, fields updated
+     10. test_update_post_by_non_owner   — 403 forbidden
+     11. test_delete_post_by_owner       — 204 no content
+
+    Comment tests (>=3):
+     12. test_add_comment_authenticated  — 201, comment linked to post
+     13. test_get_comments_paginated     — 200, pagination works
+     14. test_delete_comment_by_author   — 204 no content
+
+    Search test (>=1):
+     15. test_search_posts_by_keyword    — 200, returns matching posts only
+
+    Cache tests (>=2):
+     16. test_post_list_cached           — second request served from cache
+                                           (mock Redis or check hit header)
+     17. test_cache_invalidated_on_update — cache miss after post update
+
+  TEST COVERAGE:
+    - Configure pytest-cov; add a pytest.ini or pyproject.toml section that sets
+      --cov=app --cov-report=term-missing
+    - The test run must report >= 85% overall coverage
+    - Include a conftest.py with app fixture, client fixture, and an
+      auth_headers helper that logs in and returns the Authorization header
+
+--------------------------------------------------------------------------------
+TASKS:
+--------------------------------------------------------------------------------
+  - Install and configure Redis caching (Flask-Caching + Redis backend)
+  - Cache post listings and individual posts with configurable TTL
+  - Implement cache invalidation on post/comment create, update, and delete
+  - Add database indexes on Post columns (created_at, author_id, category_id)
+  - Write 15+ pytest test cases covering auth, CRUD, comments, search, and cache
+  - Achieve 85%+ test coverage (enforce with pytest-cov)
+
+--------------------------------------------------------------------------------
+GOALS:
+--------------------------------------------------------------------------------
+  - Reduce API response time by 50% for cached endpoints
+  - Handle more concurrent requests through efficient cache usage and DB indexes
+
+--------------------------------------------------------------------------------
+EXPECTED DELIVERABLES:
+--------------------------------------------------------------------------------
+  - Updated requirements.txt with: flask-caching, redis, pytest, pytest-flask,
+    pytest-cov, fakeredis (for test isolation)
+  - app/extensions.py (or equivalent) wiring up the Cache instance
+  - Cache decorators / manual cache.get/set calls on the affected routes
+  - Cache-invalidation helpers called from every mutating route
+  - Migration file or updated models.py with index declarations
+  - tests/conftest.py + tests/test_auth.py + tests/test_posts.py +
+    tests/test_comments.py + tests/test_cache.py
+  - pytest.ini (or pyproject.toml [tool.pytest.ini_options]) configured for
+    coverage reporting
+
+================================================================================
