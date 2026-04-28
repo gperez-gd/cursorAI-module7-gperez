@@ -79,8 +79,10 @@ def create_app(env: str | None = None) -> Flask:
 
     @app.after_request
     def _log_response(response):
-        ms = (time.monotonic() - g.t0) * 1000
-        app.logger.info("← %s %s  [%.1f ms]", response.status_code, request.path, ms)
+        t0 = getattr(g, 't0', None)
+        if t0 is not None:
+            ms = (time.monotonic() - t0) * 1000
+            app.logger.info("← %s %s  [%.1f ms]", response.status_code, request.path, ms)
         return response
 
     # JWT token blacklist check

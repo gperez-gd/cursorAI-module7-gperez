@@ -11,7 +11,7 @@ jobs:
   dispatch-module8:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch module7-corrected-commit
+      - name: Dispatch cursorAI-module7-gperez-commit
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.MODULE8_CI_DISPATCH_TOKEN }}
@@ -19,7 +19,7 @@ jobs:
             await github.rest.repos.createDispatchEvent({
               owner: 'gperez-gd',
               repo: 'cursorAI-module8-gperez',
-              event_type: 'module7-corrected-commit',
+              event_type: 'cursorAI-module7-gperez-commit',
               client_payload: {
                 source_repo: '${{ github.repository }}',
                 source_sha: context.sha
